@@ -27,39 +27,87 @@ def create_simple_flow(use_vardeq=True, device='cpu'):
     return flow_model
 
 
-def create_multiscale_flow(
-    learning_rate: float = 1e-3,
-    gamma: float = 0.99,
-    step_size: int = 1,
-    example_input_array: torch.Tensor | None = None,
+def create_multiscale_flow_from_config(
+    config: dict
 ):
     flow_layers = []
+    arch_config = config['architecture']
+    hyperparams = config['hyperparameters']
     
-    vardeq_layers = [CouplingLayer(network=GatedConvNet(c_in=2, c_out=2, c_hidden=16),
-                                   mask=create_checkerboard_mask(h=28, w=28, invert=(i%2==1)),
-                                   c_in=1) for i in range(4)]
+    vardeq_layers = [
+        CouplingLayer(
+            network=GatedConvNet(
+                c_in=arch_config['vardeq_layers']['CouplingLayer']['GatedConvNet']['c_in'], 
+                c_out=arch_config['vardeq_layers']['CouplingLayer']['GatedConvNet']['c_out'], 
+                c_hidden=arch_config['vardeq_layers']['CouplingLayer']['GatedConvNet']['c_hidden']
+            ),
+            mask=create_checkerboard_mask(
+                h=arch_config['vardeq_layers']['CouplingLayer']['mask']['h'], 
+                w=arch_config['vardeq_layers']['CouplingLayer']['mask']['w'], 
+                invert=(i%2==1)
+            ),
+            c_in=arch_config['vardeq_layers']['CouplingLayer']['c_in']
+        ) 
+        for i in range(arch_config['vardeq_layers']['num_layers'])
+    ]
     flow_layers += [VariationalDequantization(vardeq_layers)]
     
-    flow_layers += [CouplingLayer(network=GatedConvNet(c_in=1, c_hidden=32),
-                                  mask=create_checkerboard_mask(h=28, w=28, invert=(i%2==1)),
-                                  c_in=1) for i in range(2)]
+    flow_layers += [
+        CouplingLayer(
+            network=GatedConvNet(
+                c_in=arch_config['low_layers']['CouplingLayer']['GatedConvNet']['c_in'],
+                c_hidden=arch_config['low_layers']['CouplingLayer']['GatedConvNet']['c_hidden']
+            ),
+            mask=create_checkerboard_mask(
+                h=arch_config['low_layers']['CouplingLayer']['mask']['h'], 
+                w=arch_config['low_layers']['CouplingLayer']['mask']['w'], 
+                invert=(i%2==1)),
+            c_in=arch_config['low_layers']['CouplingLayer']['c_in']
+        ) 
+        for i in range(arch_config['low_layers']['num_layers'])
+    ]
     flow_layers += [SqueezeFlow()]
-    for i in range(2):
-        flow_layers += [CouplingLayer(network=GatedConvNet(c_in=4, c_hidden=48),
-                                      mask=create_channel_mask(c_in=4, invert=(i%2==1)),
-                                      c_in=4)]
+    
+    flow_layers += [
+        CouplingLayer(
+            network=GatedConvNet(
+                c_in=arch_config['after_squeeze_layers']['CouplingLayer']['GatedConvNet']['c_in'], 
+                c_hidden=arch_config['after_squeeze_layers']['CouplingLayer']['GatedConvNet']['c_hidden']
+            ),
+            mask=create_channel_mask(
+                c_in=arch_config['after_squeeze_layers']['CouplingLayer']['mask']['c_in'], 
+                invert=(i%2==1)
+            ),
+            c_in=arch_config['after_squeeze_layers']['CouplingLayer']['c_in']
+        )
+        for i in range(arch_config['after_squeeze_layers']['num_layers'])
+    ]
     flow_layers += [SplitFlow(),
                     SqueezeFlow()]
-    for i in range(4):
-        flow_layers += [CouplingLayer(network=GatedConvNet(c_in=8, c_hidden=64),
-                                      mask=create_channel_mask(c_in=8, invert=(i%2==1)),
-                                      c_in=8)]
+    
+    flow_layers += [
+        CouplingLayer(
+            network=GatedConvNet(
+                c_in=arch_config['after_split_layers']['CouplingLayer']['GatedConvNet']['c_in'],
+                c_hidden=arch_config['after_split_layers']['CouplingLayer']['GatedConvNet']['c_hidden']
+            ),
+            mask=create_channel_mask(
+                c_in=arch_config['after_split_layers']['CouplingLayer']['mask']['c_in'],
+                invert=(i%2==1)
+            ),
+            c_in=arch_config['after_split_layers']['CouplingLayer']['c_in']
+        )
+        for i in range(arch_config['after_split_layers']['num_layers'])
+    ]
 
     flow_model = ImageFlow(
         flows=flow_layers,
-        learning_rate=learning_rate,
-        gamma=gamma,
-        step_size=step_size,
-        example_input_array=example_input_array
+        learning_rate=hyperparams['learning_rate'],
+        gamma=hyperparams['gamma'],
+        step_size=hyperparams['step_size'],
+        example_input_array=hyperparams.get('example_input_array'),
+        visualize_samples_shape=hyperparams.get('visualize_samples_shape'),
     )
     return flow_model
+
+
