@@ -1,2 +1,4 @@
 __pycache__
 data
+lightning_logs/
+notebooks/lightning_logs/
